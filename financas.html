@@ -220,7 +220,7 @@ input[type=text],input[type=number],input[type=date],select{width:100%;padding:0
 
 <div class="modal-bg" id="modal-bg" onclick="closeModalBg(event)">
   <div class="modal">
-    <div class="modal-title">Novo movimento</div>
+    <div class="modal-title" id="modal-title">Novo movimento</div>
     <div class="type-toggle">
       <button class="type-btn income active" id="btn-income" onclick="setType('income')">+ Receita</button>
       <button class="type-btn expense" id="btn-expense" onclick="setType('expense')">− Despesa</button>
@@ -233,7 +233,7 @@ input[type=text],input[type=number],input[type=date],select{width:100%;padding:0
     <div class="form-row" id="row-income-source" style="display:none"><label class="form-label">Fonte de rendimento</label><select id="tx-income-source"></select></div>
     <div class="btn-row">
       <button class="btn" onclick="closeModal()">Cancelar</button>
-      <button class="btn primary" onclick="saveTransaction()">Guardar</button>
+      <button class="btn primary" id="modal-save-btn" onclick="saveTransaction()">Guardar</button>
     </div>
   </div>
 </div>
@@ -278,8 +278,12 @@ function txHTML(t){
   const dateStr=fmtDate(t.date);
   return `<div class="tx-item">
     <div class="tx-icon" style="background:${t.type==='income'?'var(--success-bg)':'var(--danger-bg)'}">${gi(t.category||t.incomeSource||'')}</div>
-    <div class="tx-info"><div class="tx-desc">${t.desc||'Sem descrição'}</div><div class="tx-meta">${sub}${sub&&dateStr?' · ':''}${dateStr}</div></div>
-    <div class="tx-amount ${cls}">${sign}${fmt(t.amount)}</div>
+    <div class="tx-info" style="cursor:pointer" onclick="openEditModal(${t.id})"><div class="tx-desc">${t.desc||'Sem descrição'}</div><div class="tx-meta">${sub}${sub&&dateStr?' · ':''}${dateStr}</div></div>
+    <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+      <div class="tx-amount ${cls}">${sign}${fmt(t.amount)}</div>
+      <button onclick="openEditModal(${t.id})" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:4px;font-size:16px;display:flex;align-items:center"><i class="ti ti-edit"></i></button>
+      <button onclick="deleteTx(${t.id})" style="background:none;border:none;color:var(--danger);cursor:pointer;padding:4px;font-size:16px;display:flex;align-items:center"><i class="ti ti-trash"></i></button>
+    </div>
   </div>`;
 }
 
@@ -516,8 +520,45 @@ function setType(t){
   else document.getElementById('tx-income-source').innerHTML=state.incomeSources.map(s=>`<option>${s}</option>`).join('');
 }
 
-function openModal(){setType('income');document.getElementById('tx-desc').value='';document.getElementById('tx-amount').value='';document.getElementById('tx-date').value=new Date().toISOString().slice(0,10);document.getElementById('modal-bg').classList.add('open')}
-function closeModal(){document.getElementById('modal-bg').classList.remove('open')}
+let editingId=null;
+
+function openModal(){
+  editingId=null;
+  document.getElementById('modal-title').textContent='Novo movimento';
+  document.getElementById('modal-save-btn').textContent='Guardar';
+  setType('income');
+  document.getElementById('tx-desc').value='';
+  document.getElementById('tx-amount').value='';
+  document.getElementById('tx-date').value=new Date().toISOString().slice(0,10);
+  document.getElementById('modal-bg').classList.add('open');
+}
+
+function openEditModal(id){
+  const t=state.transactions.find(x=>x.id===id);
+  if(!t)return;
+  editingId=id;
+  document.getElementById('modal-title').textContent='Editar movimento';
+  document.getElementById('modal-save-btn').textContent='Guardar alterações';
+  setType(t.type);
+  document.getElementById('tx-desc').value=t.desc||'';
+  document.getElementById('tx-amount').value=t.amount;
+  document.getElementById('tx-date').value=t.date.slice(0,10);
+  if(t.type==='expense'){
+    document.getElementById('tx-category').value=t.category||'';
+  } else {
+    document.getElementById('tx-income-source').value=t.incomeSource||'';
+  }
+  document.getElementById('tx-wallet').value=t.wallet||'';
+  document.getElementById('modal-bg').classList.add('open');
+}
+
+function deleteTx(id){
+  if(!confirm('Eliminar este movimento?'))return;
+  state.transactions=state.transactions.filter(t=>t.id!==id);
+  save();render();
+}
+
+function closeModal(){editingId=null;document.getElementById('modal-bg').classList.remove('open')}
 function closeModalBg(e){if(e.target===document.getElementById('modal-bg'))closeModal()}
 
 function saveTransaction(){
@@ -526,10 +567,16 @@ function saveTransaction(){
   const dateVal=document.getElementById('tx-date').value;
   if(!desc||isNaN(amount)||amount<=0){alert('Preenche a descrição e o valor.');return}
   if(!dateVal){alert('Escolhe uma data.');return}
-  const tx={id:Date.now(),type:state.type,desc,amount,wallet:document.getElementById('tx-wallet').value,date:dateVal+'T12:00:00'};
-  if(state.type==='expense')tx.category=document.getElementById('tx-category').value;
-  else tx.incomeSource=document.getElementById('tx-income-source').value;
-  state.transactions.push(tx);save();closeModal();render();
+  const txData={type:state.type,desc,amount,wallet:document.getElementById('tx-wallet').value,date:dateVal+'T12:00:00'};
+  if(state.type==='expense')txData.category=document.getElementById('tx-category').value;
+  else txData.incomeSource=document.getElementById('tx-income-source').value;
+  if(editingId){
+    const idx=state.transactions.findIndex(t=>t.id===editingId);
+    if(idx>-1)state.transactions[idx]={...state.transactions[idx],...txData};
+  } else {
+    state.transactions.push({id:Date.now(),...txData});
+  }
+  save();closeModal();render();
 }
 
 const now=new Date();
