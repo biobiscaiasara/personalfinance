@@ -164,6 +164,9 @@ input[type=text],input[type=number],input[type=date],select{width:100%;padding:0
     </div>
 
     <div id="screen-wallets" class="screen">
+      <button onclick="openTransferModal()" style="width:100%;margin-bottom:14px;padding:12px;border-radius:var(--radius);border:0.5px solid var(--border-accent, var(--accent));background:var(--accent-bg);color:var(--accent-text);font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+        <i class="ti ti-arrows-exchange" style="font-size:18px"></i> Transferência entre carteiras
+      </button>
       <div id="wallet-detail"></div>
     </div>
 
@@ -218,7 +221,20 @@ input[type=text],input[type=number],input[type=date],select{width:100%;padding:0
 
 <button class="fab" onclick="openModal()" aria-label="Adicionar movimento"><i class="ti ti-plus"></i></button>
 
-<div class="modal-bg" id="modal-bg" onclick="closeModalBg(event)">
+<div class="modal-bg" id="transfer-modal-bg" onclick="closeTransferModalBg(event)">
+  <div class="modal">
+    <div class="modal-title">Transferência entre carteiras</div>
+    <div class="form-row"><label class="form-label">Descrição</label><input type="text" id="tr-desc" placeholder="Ex: Carregamento Revolut"></div>
+    <div class="form-row"><label class="form-label">Valor (€)</label><input type="number" id="tr-amount" placeholder="0.00" min="0" step="0.01"></div>
+    <div class="form-row"><label class="form-label">Data</label><input type="date" id="tr-date"></div>
+    <div class="form-row"><label class="form-label">De (origem)</label><select id="tr-from"></select></div>
+    <div class="form-row"><label class="form-label">Para (destino)</label><select id="tr-to"></select></div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeTransferModal()">Cancelar</button>
+      <button class="btn primary" onclick="saveTransfer()">Transferir</button>
+    </div>
+  </div>
+</div>
   <div class="modal">
     <div class="modal-title" id="modal-title">Novo movimento</div>
     <div class="type-toggle">
@@ -265,13 +281,31 @@ function fmt(n){return n.toLocaleString('pt-PT',{minimumFractionDigits:2,maximum
 
 function walletBalances(){
   const b={};state.wallets.forEach(w=>b[w]=0);
-  state.transactions.forEach(t=>{if(t.wallet&&b[t.wallet]!==undefined)b[t.wallet]+=t.type==='income'?t.amount:-t.amount});
+  state.transactions.forEach(t=>{
+    if(t.type==='transfer'){
+      if(b[t.fromWallet]!==undefined)b[t.fromWallet]-=t.amount;
+      if(b[t.toWallet]!==undefined)b[t.toWallet]+=t.amount;
+    } else {
+      if(t.wallet&&b[t.wallet]!==undefined)b[t.wallet]+=t.type==='income'?t.amount:-t.amount;
+    }
+  });
   return b;
 }
 
 function fmtDate(iso){try{const d=new Date(iso);return d.toLocaleDateString('pt-PT',{day:'2-digit',month:'2-digit',year:'numeric'})}catch(e){return ''}}
 
 function txHTML(t){
+  if(t.type==='transfer'){
+    const dateStr=fmtDate(t.date);
+    return `<div class="tx-item">
+      <div class="tx-icon" style="background:var(--accent-bg);display:flex;align-items:center;justify-content:center"><i class="ti ti-arrows-exchange" style="font-size:17px;color:var(--accent-text)"></i></div>
+      <div class="tx-info"><div class="tx-desc">${t.desc}</div><div class="tx-meta">${t.fromWallet} → ${t.toWallet}${dateStr?' · '+dateStr:''}</div></div>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <div class="tx-amount" style="color:var(--accent-text)">${fmt(t.amount)}</div>
+        <button onclick="deleteTx(${t.id})" style="background:none;border:none;color:var(--danger);cursor:pointer;padding:4px;font-size:16px;display:flex;align-items:center"><i class="ti ti-trash"></i></button>
+      </div>
+    </div>`;
+  }
   const sign=t.type==='income'?'+':'-';
   const cls=t.type==='income'?'pos':'neg';
   const sub=t.type==='income'?(t.incomeSource||''):(t.category||'')+(t.wallet?` · ${t.wallet}`:'');
@@ -496,7 +530,7 @@ function render(){
   document.getElementById('all-tx').innerHTML=state.transactions.slice().reverse().map(txHTML).join('')||'<div class="empty">Sem movimentos ainda</div>';
   const bals2=walletBalances();
   document.getElementById('wallet-detail').innerHTML=state.wallets.map(w=>{
-    const allTxs=state.transactions.filter(t=>t.wallet===w).reverse();
+    const allTxs=state.transactions.filter(t=>t.type==='transfer'?(t.fromWallet===w||t.toWallet===w):t.wallet===w).reverse();
     const isOpen=walletOpen[w];
     const bal=bals2[w]||0;
     const txCount=allTxs.length;
@@ -522,7 +556,34 @@ function render(){
   document.getElementById('wallet-list-settings').innerHTML=state.wallets.map((w,i)=>`<div class="manage-item"><span>${gi(w)} ${w}</span><button class="del-btn" onclick="deleteItem('wallets',${i})"><i class="ti ti-trash"></i></button></div>`).join('');
 }
 
-function deleteItem(arr,i){state[arr].splice(i,1);save();render()}
+function openTransferModal(){
+  document.getElementById('tr-desc').value='';
+  document.getElementById('tr-amount').value='';
+  document.getElementById('tr-date').value=new Date().toISOString().slice(0,10);
+  const opts=state.wallets.map(w=>`<option>${w}</option>`).join('');
+  document.getElementById('tr-from').innerHTML=opts;
+  document.getElementById('tr-to').innerHTML=opts;
+  if(state.wallets.length>1)document.getElementById('tr-to').selectedIndex=1;
+  document.getElementById('transfer-modal-bg').classList.add('open');
+}
+function closeTransferModal(){document.getElementById('transfer-modal-bg').classList.remove('open')}
+function closeTransferModalBg(e){if(e.target===document.getElementById('transfer-modal-bg'))closeTransferModal()}
+
+function saveTransfer(){
+  const desc=document.getElementById('tr-desc').value.trim()||'Transferência';
+  const amount=parseFloat(document.getElementById('tr-amount').value);
+  const dateVal=document.getElementById('tr-date').value;
+  const from=document.getElementById('tr-from').value;
+  const to=document.getElementById('tr-to').value;
+  if(isNaN(amount)||amount<=0){alert('Preenche o valor.');return}
+  if(!dateVal){alert('Escolhe uma data.');return}
+  if(from===to){alert('Origem e destino têm de ser carteiras diferentes.');return}
+  const transferId=Date.now();
+  state.transactions.push({id:transferId,type:'transfer',desc,amount,fromWallet:from,toWallet:to,wallet:from,date:dateVal+'T12:00:00'});
+  save();closeTransferModal();render();
+}
+
+
 function addCategory(){const v=document.getElementById('new-cat').value.trim();if(v){state.categories.push(v);document.getElementById('new-cat').value='';save();render()}}
 function addIncomeSource(){const v=document.getElementById('new-income').value.trim();if(v){state.incomeSources.push(v);document.getElementById('new-income').value='';save();render()}}
 function addWallet(){const v=document.getElementById('new-wallet').value.trim();if(v){state.wallets.push(v);document.getElementById('new-wallet').value='';save();render()}}
