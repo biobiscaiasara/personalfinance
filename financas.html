@@ -188,8 +188,8 @@ input[type=text],input[type=number],input[type=date],select{width:100%;padding:0
         <div id="bud-monthly-comparison"></div>
       </div>
 
-      <div class="section-title" style="margin-top:20px">Orçamento por categoria</div>
-      <div style="font-size:13px;color:var(--text2);margin-bottom:10px">Define o limite mensal para cada categoria</div>
+      <div class="section-title" style="margin-top:20px">Definir orçamento por categoria</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:10px">Cada categoria tem um limite por mês — podes definir valores diferentes em cada mês</div>
       <div id="bud-edit-list"></div>
     </div>
 
@@ -342,11 +342,28 @@ function shiftBudgetMonth(d){
   renderBudget();
 }
 
-function saveBudget(cat,val){
+function getBudget(cat,m){
   if(!state.budgets)state.budgets={};
+  const cb=state.budgets[cat];
+  if(!cb)return 0;
+  if(typeof cb==='number')return cb;
+  return cb[m]||0;
+}
+
+function saveBudget(cat,m,val){
+  if(!state.budgets)state.budgets={};
+  if(typeof state.budgets[cat]==='number')state.budgets[cat]={};
+  if(!state.budgets[cat])state.budgets[cat]={};
   const v=parseFloat(val);
-  if(!isNaN(v)&&v>0)state.budgets[cat]=v;
-  else delete state.budgets[cat];
+  if(!isNaN(v)&&v>0)state.budgets[cat][m]=v;
+  else delete state.budgets[cat][m];
+  save();renderBudget();
+}
+
+function copyBudgetToAll(cat,m){
+  const val=getBudget(cat,m);
+  if(!state.budgets[cat]||typeof state.budgets[cat]==='number')state.budgets[cat]={};
+  for(let i=0;i<12;i++)state.budgets[cat][i]=val;
   save();renderBudget();
 }
 
@@ -359,15 +376,16 @@ function getMonthExpenses(m,y){
   return totals;
 }
 
+let budgetEditOpen={};
+
 function renderBudget(){
   if(!state.budgets)state.budgets={};
-  const budgets=state.budgets;
 
   if(budgetView==='month'){
     document.getElementById('bud-month-label').textContent=`${MONTHS_FULL[budgetMonth]} ${budgetYear}`;
     const spent=getMonthExpenses(budgetMonth,budgetYear);
     const cats=state.categories;
-    const totalBudget=cats.reduce((s,c)=>s+(budgets[c]||0),0);
+    const totalBudget=cats.reduce((s,c)=>s+getBudget(c,budgetMonth),0);
     const totalSpent=cats.reduce((s,c)=>s+(spent[c]||0),0);
     let html='';
     if(totalBudget>0){
@@ -381,7 +399,7 @@ function renderBudget(){
       </div>`;
     }
     cats.forEach(cat=>{
-      const budget=budgets[cat]||0;
+      const budget=getBudget(cat,budgetMonth);
       const s=spent[cat]||0;
       if(budget===0&&s===0)return;
       const pct=budget>0?Math.min(s/budget*100,100):0;
@@ -391,7 +409,7 @@ function renderBudget(){
       else if(budget>0&&s/budget>=0.8)alertHTML='<span class="alert-badge warn"><i class="ti ti-alert-circle" style="font-size:11px"></i> A aproximar</span>';
       html+=`<div class="bud-card">
         <div class="bud-header"><div class="bud-cat">${gi(cat)} ${cat}</div><div class="bud-amounts">${fmt(s)}${budget>0?` de <span>${fmt(budget)}</span>`:''}</div></div>
-        ${budget>0?`<div class="progress-track"><div class="progress-bar ${barCls}" style="width:${pct.toFixed(1)}%"></div></div><div class="bud-footer"><span style="font-size:12px;color:var(--text2)">${pct.toFixed(0)}% utilizado</span>${alertHTML}</div>`:'<div style="font-size:12px;color:var(--text3)">Sem limite definido</div>'}
+        ${budget>0?`<div class="progress-track"><div class="progress-bar ${barCls}" style="width:${pct.toFixed(1)}%"></div></div><div class="bud-footer"><span style="font-size:12px;color:var(--text2)">${pct.toFixed(0)}% utilizado</span>${alertHTML}</div>`:'<div style="font-size:12px;color:var(--text3)">Sem limite definido para este mês</div>'}
       </div>`;
     });
     if(!html)html='<div class="empty">Sem despesas nem orçamentos este mês</div>';
@@ -400,17 +418,15 @@ function renderBudget(){
 
   if(budgetView==='annual'){
     const y=budgetYear;
-    let totalBudgetYear=0,totalSpentYear=0,monthsOver=0,bestMonth=-Infinity,bestMonthIdx=0;
+    let totalBudgetYear=0,totalSpentYear=0,monthsOver=0;
     const monthData=MONTHS.map((mn,mi)=>{
       const s=getMonthExpenses(mi,y);
       const spentTotal=Object.values(s).reduce((a,v)=>a+v,0);
-      const budgetTotal=state.categories.reduce((a,c)=>a+(budgets[c]||0),0);
+      const budgetTotal=state.categories.reduce((a,c)=>a+getBudget(c,mi),0);
       totalBudgetYear+=budgetTotal;
       totalSpentYear+=spentTotal;
       if(budgetTotal>0&&spentTotal>budgetTotal)monthsOver++;
-      const saved=budgetTotal-spentTotal;
-      if(saved>bestMonth){bestMonth=saved;bestMonthIdx=mi;}
-      return{mn,spentTotal,budgetTotal,saved};
+      return{mn,spentTotal,budgetTotal};
     });
     const totalSaved=totalBudgetYear-totalSpentYear;
     document.getElementById('bud-annual-summary').innerHTML=`
@@ -419,7 +435,7 @@ function renderBudget(){
       <div class="ann-metric"><div class="ann-metric-label">${totalSaved>=0?'Poupança anual':'Excesso anual'}</div><div class="ann-metric-value" style="color:var(--${totalSaved>=0?'success':'danger'})">${fmt(Math.abs(totalSaved))}</div></div>
       <div class="ann-metric"><div class="ann-metric-label">Meses excedidos</div><div class="ann-metric-value" style="color:var(--${monthsOver>0?'danger':'success'})">${monthsOver}</div></div>`;
     const maxSpent=Math.max(...monthData.map(m=>m.spentTotal),1);
-    document.getElementById('bud-monthly-comparison').innerHTML=monthData.map(({mn,spentTotal,budgetTotal,saved})=>{
+    document.getElementById('bud-monthly-comparison').innerHTML=monthData.map(({mn,spentTotal,budgetTotal})=>{
       const barW=(spentTotal/maxSpent*100).toFixed(1);
       const barCls=budgetTotal>0&&spentTotal>=budgetTotal?'over':budgetTotal>0&&spentTotal/budgetTotal>=0.8?'warn':'ok';
       return`<div class="month-row">
@@ -430,12 +446,30 @@ function renderBudget(){
     }).join('');
   }
 
-  document.getElementById('bud-edit-list').innerHTML=state.categories.map(cat=>`
-    <div class="bud-edit-row">
-      <span style="font-size:14px;min-width:120px">${gi(cat)} ${cat}</span>
-      <input type="number" placeholder="0.00" min="0" step="0.01" value="${budgets[cat]||''}" onchange="saveBudget('${cat}',this.value)" style="height:38px;font-size:14px">
-      <span style="font-size:13px;color:var(--text2);flex-shrink:0">€/mês</span>
-    </div>`).join('');
+  document.getElementById('bud-edit-list').innerHTML=state.categories.map(cat=>{
+    const isOpen=budgetEditOpen[cat];
+    const monthlyTotal=MONTHS.reduce((s,_,mi)=>s+getBudget(cat,mi),0);
+    const monthInputs=MONTHS.map((mn,mi)=>`
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:13px;color:var(--text2);width:32px;flex-shrink:0">${mn}</span>
+        <input type="number" placeholder="0.00" min="0" step="0.01"
+          value="${getBudget(cat,mi)||''}"
+          onchange="saveBudget('${cat}',${mi},this.value)"
+          style="flex:1;height:36px;font-size:13px">
+        <span style="font-size:12px;color:var(--text2);flex-shrink:0">€</span>
+        ${getBudget(cat,mi)>0?`<button onclick="copyBudgetToAll('${cat}',${mi})" style="flex-shrink:0;background:var(--accent-bg);color:var(--accent-text);border:none;border-radius:var(--radius);padding:4px 8px;font-size:11px;cursor:pointer">Aplicar a todos</button>`:''}
+      </div>`).join('');
+    return`<div class="bud-card" style="margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="budgetEditOpen['${cat}']=!budgetEditOpen['${cat}'];renderBudget()">
+        <div style="font-size:14px;font-weight:600">${gi(cat)} ${cat}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${monthlyTotal>0?`<span style="font-size:12px;color:var(--text2)">Anual: ${fmt(monthlyTotal)}</span>`:'<span style="font-size:12px;color:var(--text3)">Sem limite</span>'}
+          <i class="ti ti-chevron-${isOpen?'up':'down'}" style="font-size:16px;color:var(--text3)"></i>
+        </div>
+      </div>
+      ${isOpen?`<div style="margin-top:12px;padding-top:12px;border-top:0.5px solid var(--border)">${monthInputs}</div>`:''}
+    </div>`;
+  }).join('');
 }
 
 function render(){
