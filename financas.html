@@ -221,7 +221,19 @@ input[type=text],input[type=number],input[type=date],select{width:100%;padding:0
 
 <button class="fab" onclick="openModal()" aria-label="Adicionar movimento"><i class="ti ti-plus"></i></button>
 
-<div class="modal-bg" id="transfer-modal-bg" onclick="closeTransferModalBg(event)">
+<div class="modal-bg" id="item-edit-bg" onclick="closeItemEditBg(event)">
+  <div class="modal">
+    <div class="modal-title" id="item-edit-title">Editar</div>
+    <div class="form-row"><label class="form-label">Nome</label><input type="text" id="item-edit-name" placeholder="Nome..."></div>
+    <div class="form-row"><label class="form-label">Emoji</label>
+      <div id="emoji-picker" style="display:flex;flex-wrap:wrap;gap:6px;max-height:200px;overflow-y:auto;padding:8px;background:var(--surface2);border-radius:var(--radius);border:0.5px solid var(--border2)"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="closeItemEdit()">Cancelar</button>
+      <button class="btn primary" onclick="saveItemEdit()">Guardar</button>
+    </div>
+  </div>
+</div>
   <div class="modal">
     <div class="modal-title">Transferência entre carteiras</div>
     <div class="form-row"><label class="form-label">Descrição</label><input type="text" id="tr-desc" placeholder="Ex: Carregamento Revolut"></div>
@@ -255,11 +267,11 @@ input[type=text],input[type=number],input[type=date],select{width:100%;padding:0
 </div>
 
 <script>
-const ICONS={Salário:'💼','Ticket Refeição':'🍽️',Coverflex:'💳',Revolut:'💜',Alimentação:'🛒',Transportes:'🚌',Lazer:'🎉',Saúde:'💊',Casa:'🏠',Roupa:'👗',Subscrições:'📱',Outros:'📦','Conta bancária':'🏦',Dinheiro:'💵'};
+const DEFAULT_ICONS={Salário:'💼','Ticket Refeição':'🍽️',Coverflex:'💳',Revolut:'💜',Alimentação:'🛒',Transportes:'🚌',Lazer:'🎉',Saúde:'💊',Casa:'🏠',Roupa:'👗',Subscrições:'📱',Outros:'📦','Conta bancária':'🏦',Dinheiro:'💵'};
 const COLORS=['#2a78d6','#1baf7a','#e87ba4','#eda100','#eb6834','#4a3aa7','#e34948','#008300','#5DCAA5','#D85A30'];
-function gi(n){return ICONS[n]||'💰'}
+function gi(n){return (state.icons&&state.icons[n])||DEFAULT_ICONS[n]||'💰'}
 
-let state={type:'income',categories:['Alimentação','Transportes','Lazer','Saúde','Casa','Roupa','Subscrições','Outros'],incomeSources:['Salário','Ticket Refeição','Coverflex','Outros rendimentos'],wallets:['Revolut','Coverflex','Dinheiro','Conta bancária'],transactions:[],budgets:{}};
+let state={type:'income',categories:['Alimentação','Transportes','Lazer','Saúde','Casa','Roupa','Subscrições','Outros'],incomeSources:['Salário','Ticket Refeição','Coverflex','Outros rendimentos'],wallets:['Revolut','Coverflex','Dinheiro','Conta bancária'],transactions:[],budgets:{},icons:{}};
 let pieChart=null;
 let budgetMonth=new Date().getMonth();
 let budgetYear=new Date().getFullYear();
@@ -551,9 +563,9 @@ function render(){
       ${isOpen?`<div style="margin-top:12px;padding-top:12px;border-top:0.5px solid var(--border)">${allTxs.length?allTxs.map(txHTML).join(''):'<div style="font-size:13px;color:var(--text3);padding:8px 0">Sem movimentos</div>'}</div>`:''}
     </div>`;
   }).join('')||'<div class="empty">Sem carteiras definidas</div>';
-  document.getElementById('cat-list').innerHTML=state.categories.map((c,i)=>`<div class="manage-item"><span>${gi(c)} ${c}</span><button class="del-btn" onclick="deleteItem('categories',${i})"><i class="ti ti-trash"></i></button></div>`).join('');
-  document.getElementById('income-list').innerHTML=state.incomeSources.map((s,i)=>`<div class="manage-item"><span>${gi(s)} ${s}</span><button class="del-btn" onclick="deleteItem('incomeSources',${i})"><i class="ti ti-trash"></i></button></div>`).join('');
-  document.getElementById('wallet-list-settings').innerHTML=state.wallets.map((w,i)=>`<div class="manage-item"><span>${gi(w)} ${w}</span><button class="del-btn" onclick="deleteItem('wallets',${i})"><i class="ti ti-trash"></i></button></div>`).join('');
+  document.getElementById('cat-list').innerHTML=state.categories.map((c,i)=>`<div class="manage-item"><span style="cursor:pointer" onclick="openItemEdit('categories',${i})">${gi(c)} ${c}</span><div style="display:flex;gap:4px"><button class="del-btn" style="color:var(--text3)" onclick="openItemEdit('categories',${i})"><i class="ti ti-edit"></i></button><button class="del-btn" onclick="deleteItem('categories',${i})"><i class="ti ti-trash"></i></button></div></div>`).join('');
+  document.getElementById('income-list').innerHTML=state.incomeSources.map((s,i)=>`<div class="manage-item"><span style="cursor:pointer" onclick="openItemEdit('incomeSources',${i})">${gi(s)} ${s}</span><div style="display:flex;gap:4px"><button class="del-btn" style="color:var(--text3)" onclick="openItemEdit('incomeSources',${i})"><i class="ti ti-edit"></i></button><button class="del-btn" onclick="deleteItem('incomeSources',${i})"><i class="ti ti-trash"></i></button></div></div>`).join('');
+  document.getElementById('wallet-list-settings').innerHTML=state.wallets.map((w,i)=>`<div class="manage-item"><span style="cursor:pointer" onclick="openItemEdit('wallets',${i})">${gi(w)} ${w}</span><div style="display:flex;gap:4px"><button class="del-btn" style="color:var(--text3)" onclick="openItemEdit('wallets',${i})"><i class="ti ti-edit"></i></button><button class="del-btn" onclick="deleteItem('wallets',${i})"><i class="ti ti-trash"></i></button></div></div>`).join('');
 }
 
 function openTransferModal(){
@@ -584,7 +596,49 @@ function saveTransfer(){
 }
 
 
-function addCategory(){const v=document.getElementById('new-cat').value.trim();if(v){state.categories.push(v);document.getElementById('new-cat').value='';save();render()}}
+const EMOJI_LIST=['😀','😂','🥰','😎','🤩','🥳','😴','🤑','💪','🧠','👀','👋','🙌','🤝','✌️','👍','❤️','🔥','⭐','✨','🎉','🎊','🎁','🏆','🥇','🎯','🎮','🎵','🎶','📱','💻','🖥️','⌚','📷','🔑','🔒','💡','🔋','🛒','🏠','🚗','🚕','🚌','✈️','🚂','🚀','⛵','🏍️','🛵','🚲','🛴','💼','👔','👗','👟','👠','👒','🧳','🎒','💍','💄','🧴','🪥','💊','🏥','🩺','🧪','💉','🌡️','🍔','🍕','🍣','🍜','🍱','🥗','🍰','🧁','🍩','🍺','🥂','☕','🍵','🧃','💧','🌿','🌱','🌸','🌺','🌻','🍎','🍋','🍇','🍓','🥦','🌮','🥙','💰','💵','💳','💴','💶','💷','🏦','📈','📉','📊','💹','🏧','🪙','💎','🛍️','🧾','📦','📬','🗒️','📋','🗂️','📁','🖊️','✏️','📌','📎','🔧','🔨','⚙️','🧰','🪛','🔩','💡','🔦','🕯️','🛋️','🪑','🛏️','🚿','🪴','🧹','🧺','🧻','🪣','🏡'];
+
+let itemEditCtx={arr:null,idx:null,selectedEmoji:null};
+
+function openItemEdit(arr,idx){
+  const list=arr==='categories'?state.categories:arr==='incomeSources'?state.incomeSources:state.wallets;
+  const name=list[idx];
+  itemEditCtx={arr,idx,selectedEmoji:gi(name)};
+  const titles={categories:'Editar categoria',incomeSources:'Editar fonte de rendimento',wallets:'Editar carteira'};
+  document.getElementById('item-edit-title').textContent=titles[arr];
+  document.getElementById('item-edit-name').value=name;
+  const picker=document.getElementById('emoji-picker');
+  picker.innerHTML=EMOJI_LIST.map(e=>`<button onclick="selectEmoji('${e}')" style="font-size:22px;background:${e===itemEditCtx.selectedEmoji?'var(--accent-bg)':'none'};border:${e===itemEditCtx.selectedEmoji?'2px solid var(--accent)':'2px solid transparent'};border-radius:6px;padding:4px;cursor:pointer;line-height:1" id="ep-${e.codePointAt(0)}">${e}</button>`).join('');
+  document.getElementById('item-edit-bg').classList.add('open');
+}
+
+function selectEmoji(e){
+  itemEditCtx.selectedEmoji=e;
+  document.querySelectorAll('#emoji-picker button').forEach(b=>{
+    b.style.background='none';b.style.borderColor='transparent';
+  });
+  const id='ep-'+e.codePointAt(0);
+  const btn=document.getElementById(id);
+  if(btn){btn.style.background='var(--accent-bg)';btn.style.borderColor='var(--accent)';}
+}
+
+function saveItemEdit(){
+  const newName=document.getElementById('item-edit-name').value.trim();
+  if(!newName)return;
+  const {arr,idx,selectedEmoji}=itemEditCtx;
+  const list=arr==='categories'?state.categories:arr==='incomeSources'?state.incomeSources:state.wallets;
+  const oldName=list[idx];
+  list[idx]=newName;
+  if(!state.icons)state.icons={};
+  if(selectedEmoji)state.icons[newName]=selectedEmoji;
+  if(oldName!==newName&&state.icons[oldName]){state.icons[newName]=state.icons[newName]||state.icons[oldName];delete state.icons[oldName];}
+  save();closeItemEdit();render();
+}
+
+function closeItemEdit(){document.getElementById('item-edit-bg').classList.remove('open')}
+function closeItemEditBg(e){if(e.target===document.getElementById('item-edit-bg'))closeItemEdit()}
+
+
 function addIncomeSource(){const v=document.getElementById('new-income').value.trim();if(v){state.incomeSources.push(v);document.getElementById('new-income').value='';save();render()}}
 function addWallet(){const v=document.getElementById('new-wallet').value.trim();if(v){state.wallets.push(v);document.getElementById('new-wallet').value='';save();render()}}
 
