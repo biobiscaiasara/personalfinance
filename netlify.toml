@@ -1,0 +1,27 @@
+# Netlify configuration.
+#
+# Committing this means the build settings live in the repository rather than in
+# Netlify's web forms — so there is only one thing left to configure by hand:
+# the two environment variables (see netlify-build.sh).
+
+[build]
+  publish = "dist"
+  command = "sh ./netlify-build.sh"
+
+[functions]
+  directory = "netlify/functions"
+
+# Serve the app at the bare domain. Without this, the root URL would 404 and
+# only /financas.html would work. Status 200 rewrites rather than redirects, so
+# the address stays clean.
+[[redirects]]
+  from = "/"
+  to = "/financas.html"
+  status = 200
+
+# config.js is generated fresh on every deploy and holds the credentials.
+# Never let a browser or CDN hold on to a stale copy.
+[[headers]]
+  for = "/config.js"
+  [headers.values]
+    Cache-Control = "no-store"
